@@ -8,23 +8,39 @@
     </tstamp>
 
   <target name="jar">
-    <!-- This is to make a jar with a source attachment, for e.g. easy -->
-    <!-- navigation in Eclipse. See this question: -->
-    <!-- http://stackoverflow.com/questions/3584968/ant-how-to-compile-jar-that-includes-source-attachment -->
-    <javac sourcepath="" srcdir="java" destdir="build/classes" debug="on" includeantruntime="false" @OPENCV_ANT_JAVAC_EXTRA_ATTRS@ >
+    <mkdir dir="build/classes"/>
+    <mkdir dir="build/classes-9"/>
+    <javac sourcepath="" srcdir="java" destdir="build/classes" debug="on" includeantruntime="false" source="8" target="8" >
+      <include name="**/*.java"/>
+      <compilerarg line="-encoding utf-8"/>
+    </javac>
+    <path id="build.classpath">
+      <dirset dir="">
+        <include name="build/classes"/>
+      </dirset>
+    </path>
+    <javac sourcepath="" srcdir="java9" destdir="build/classes-9" classpathref="build.classpath" debug="on" includeantruntime="false" source="9" target="9" >
       <include name="**/*.java"/>
       <compilerarg line="-encoding utf-8"/>
     </javac>
     <jar destfile="@OPENCV_JAR_FILE@">
-      <fileset dir="java"/>
+      <!-- classes loadable by old (<Java 9) versions -->
       <fileset dir="build/classes"/>
+      <!-- Per release classes, require Java 9+ for loadable via standard ClassLoader -->
+      <zipfileset prefix="META-INF/versions/9/" dir="build/classes-9"/>
       <manifest>
+        <!-- special mf-entry according to the spec -->
+        <attribute name="Multi-Release" value="true"/>
         <attribute name="Specification-Title" value="OpenCV"/>
         <attribute name="Specification-Version" value="@OPENCV_VERSION@"/>
         <attribute name="Implementation-Title" value="OpenCV"/>
         <attribute name="Implementation-Version" value="@OPENCV_VCSVERSION@"/>
         <attribute name="Implementation-Date" value="${timestamp}"/>
       </manifest>
+    </jar>
+    <jar destfile="@OPENCV_SRC_JAR_FILE@">
+      <fileset dir="java"/>
+      <zipfileset dir="java9" prefix="java9" />
     </jar>
   </target>
 

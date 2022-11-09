@@ -1,10 +1,13 @@
 package org.opencv.core;
 
+import java.lang.ref.Cleaner;
 import java.nio.ByteBuffer;
 
 // C++: class Mat
 //javadoc: Mat
 public class Mat {
+    // A cleaner for the OpenCV library
+    public static final Cleaner cleaner = Cleaner.create();
 
     public final long nativeObj;
 
@@ -12,6 +15,7 @@ public class Mat {
         if (addr == 0)
             throw new UnsupportedOperationException("Native object address is NULL");
         nativeObj = addr;
+        cleaner.register(this, () -> n_delete(addr));
     }
 
     //
@@ -749,12 +753,6 @@ public class Mat {
     // javadoc: Mat::zeros(sizes, type)
     public static Mat zeros(int[] sizes, int type) {
         return new Mat(n_zeros(sizes.length, sizes, type));
-    }
-
-    @Override
-    protected void finalize() throws Throwable {
-        n_delete(nativeObj);
-        super.finalize();
     }
 
     // javadoc:Mat::toString()

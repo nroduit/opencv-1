@@ -352,12 +352,13 @@ class ClassInfo(GeneralInfo):
         self.jn_code.close()
         self.cpp_code.close()
 
-    def generateJavaCode(self, m, M):
+    def generateJavaCode(self, m, M, java9=False):
         return Template(self.j_code.getvalue() + "\n\n" +
                          self.jn_code.getvalue() + "\n}\n").substitute(
                             module = m,
                             name = self.name,
                             jname = self.jname,
+                            jcleaner = "org.opencv.core.Mat.cleaner.register(this, () -> delete(addr));" if java9 else "",
                             imports = "\n".join(self.getAllImports(M)),
                             docs = self.docstring,
                             annotation = "\n" + "\n".join(self.annotation) if self.annotation else "",
@@ -621,19 +622,22 @@ class JavaWrapperGenerator(object):
         moduleCppCode = StringIO()
         package_path = os.path.join(output_java_path, module)
         mkdir_p(package_path)
+        java9 = True if "java9" in  output_java_path else False
         for ci in sorted(self.classes.values(), key=lambda x: x.symbol_id):
             if ci.name == "Mat":
                 continue
             ci.initCodeStreams(self.Module)
-            self.gen_class(ci)
-            classJavaCode = ci.generateJavaCode(self.module, self.Module)
+            self.gen_class(ci, java9)
+            classJavaCode = ci.generateJavaCode(self.module, self.Module, java9)
             self.save("%s/%s/%s.java" % (output_java_path, module, ci.jname), classJavaCode)
             moduleCppCode.write(ci.generateCppCode())
             ci.cleanupCodeStreams()
-        cpp_file = os.path.abspath(os.path.join(output_jni_path, module + ".inl.hpp"))
-        self.cpp_files.append(cpp_file)
-        self.save(cpp_file, T_CPP_MODULE.substitute(m = module, M = module.upper(), code = moduleCppCode.getvalue(), includes = "\n".join(includes)))
-        self.save(os.path.join(output_path, module+".txt"), self.makeReport())
+
+        if not java9:
+            cpp_file = os.path.abspath(os.path.join(output_jni_path, module + ".inl.hpp"))
+            self.cpp_files.append(cpp_file)
+            self.save(cpp_file, T_CPP_MODULE.substitute(m = module, M = module.upper(), code = moduleCppCode.getvalue(), includes = "\n".join(includes)))
+            self.save(os.path.join(output_path, module+".txt"), self.makeReport())
 
     def makeReport(self):
         '''
@@ -912,7 +916,8 @@ class JavaWrapperGenerator(object):
                     ret_val = "super("
                     tail = ")"
                 else:
-                    ret_val = "nativeObj = "
+                    ret_val = "this("
+                    tail = ")"
                 ret = ""
             elif self.isWrapped(ret_type): # wrapped class
                 constructor = self.getClass(ret_type).jname + "("
@@ -1100,7 +1105,7 @@ JNIEXPORT $rtype JNICALL Java_org_opencv_${module}_${clazz}_$fname
 
 
 
-    def gen_class(self, ci):
+    def gen_class(self, ci, java9=False):
         logging.info("%s", ci)
         # constants
         consts_map = {c.name: c for c in ci.private_consts}
@@ -1174,8 +1179,9 @@ JNIEXPORT $rtype JNICALL Java_org_opencv_${module}_${clazz}_$fname
                 ci.cpp_code.write("\n".join(fn["cpp_code"]))
 
         if ci.name != self.Module or ci.base:
-            # finalize()
-            ci.j_code.write(
+            if not java9:
+                # finalize()
+                ci.j_code.write(
 """
     @Override
     protected void finalize() throws Throwable {
@@ -1185,7 +1191,7 @@ JNIEXPORT $rtype JNICALL Java_org_opencv_${module}_${clazz}_$fname
 
             ci.jn_code.write(
 """
-    // native support for java finalize()
+    // native support for deleting native object
     private static native void delete(long nativeObj);
 """ )
 
@@ -1193,7 +1199,7 @@ JNIEXPORT $rtype JNICALL Java_org_opencv_${module}_${clazz}_$fname
             ci.cpp_code.write(
 """
 //
-//  native support for java finalize()
+//  native support for deleting native object
 //  static void %(cls)s::delete( __int64 self )
 //
 JNIEXPORT void JNICALL Java_org_opencv_%(module)s_%(j_cls)s_delete(JNIEnv*, jclass, jlong);
@@ -1417,9 +1423,10 @@ if __name__ == "__main__":
     dstdir = "./gen"
     jni_path = os.path.join(dstdir, 'cpp'); mkdir_p(jni_path)
     java_base_path = os.path.join(dstdir, 'java'); mkdir_p(java_base_path)
+    java9_base_path = os.path.join(dstdir, 'java9'); mkdir_p(java9_base_path)
     java_test_base_path = os.path.join(dstdir, 'test'); mkdir_p(java_test_base_path)
 
-    for (subdir, target_subdir) in [('src/java', 'java'), ('android/java', None), ('android-21/java', None)]:
+    for (subdir, target_subdir) in [('src/java', 'java'), ('src/java9', 'java9'), ('android/java', None), ('android-21/java', None)]:
         if target_subdir is None:
             target_subdir = subdir
         java_files_dir = os.path.join(SCRIPT_DIR, subdir)
@@ -1439,6 +1446,8 @@ if __name__ == "__main__":
 
         java_path = os.path.join(java_base_path, 'org/opencv')
         mkdir_p(java_path)
+        java9_path = os.path.join(java9_base_path, 'org/opencv')
+        mkdir_p(java9_path)
 
         module_imports = []
         module_j_code = None
@@ -1492,12 +1501,18 @@ if __name__ == "__main__":
         if os.path.exists(java_files_dir):
             copy_java_files(java_files_dir, java_base_path, 'org/opencv/' + module)
 
+
+        java9_files_dir = os.path.join(misc_location, 'src/java9')
+        if os.path.exists(java9_files_dir):
+            copy_java_files(java9_files_dir, java9_base_path, 'org/opencv/' + module)
+
         java_test_files_dir = os.path.join(misc_location, 'test')
         if os.path.exists(java_test_files_dir):
             copy_java_files(java_test_files_dir, java_test_base_path, 'org/opencv/test/' + module)
 
         if len(srcfiles) > 0:
             generator.gen(srcfiles, module, dstdir, jni_path, java_path, common_headers)
+            generator.gen(srcfiles, module, dstdir, jni_path, java9_path, common_headers)
         else:
             logging.info("No generated code for module: %s", module)
     generator.finalize(jni_path)

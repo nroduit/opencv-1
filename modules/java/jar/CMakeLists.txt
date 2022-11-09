@@ -11,8 +11,10 @@ file(MAKE_DIRECTORY "${java_src_dir}")
 
 set(JAR_NAME opencv-${OPENCV_JAVA_LIB_NAME_SUFFIX}.jar)
 set(OPENCV_JAR_FILE "${OpenCV_BINARY_DIR}/bin/${JAR_NAME}" CACHE INTERNAL "")
+set(OPENCV_SRC_JAR_FILE "${OpenCV_BINARY_DIR}/bin/opencv-${OPENCV_JAVA_LIB_NAME_SUFFIX}-sources.jar" CACHE INTERNAL "")
 
 ocv_copyfiles_append_dir(JAVA_SRC_COPY "${OPENCV_JAVA_BINDINGS_DIR}/gen/java" "${java_src_dir}")
+ocv_copyfiles_append_dir(JAVA_SRC_COPY "${OPENCV_JAVA_BINDINGS_DIR}/gen/java9" "${java_src_dir}9")
 
 set(depends gen_opencv_java_source "${OPENCV_DEPHELPER}/gen_opencv_java_source")
 ocv_copyfiles_add_target(${the_module}_jar_source_copy JAVA_SRC_COPY "Copy Java(JAR) source files" ${depends})
